@@ -10,11 +10,8 @@
   "icon": "assets/jsonreg/icon.png",
   "environment": "*",
   "entrypoints": {
-    "client": [
-      "ar.hxi.jsonreg.client.JsonregMainClient"
-    ],
     "main": [
-      "ar.hxi.jsonreg.JsonregMain"
+      "ar.hxi.jsonreg.JSONRegMod"
     ]
   },
   "depends": {
