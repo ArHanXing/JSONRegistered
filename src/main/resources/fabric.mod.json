@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "jsonreg",
+  "version": "${version}",
+  "name": "JSON Registered",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/jsonreg/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "ar.hxi.jsonreg.client.JsonregMainClient"
+    ],
+    "main": [
+      "ar.hxi.jsonreg.JsonregMain"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-language-kotlin": ">=${kotlin_loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
