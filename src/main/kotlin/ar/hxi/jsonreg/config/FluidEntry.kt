@@ -7,5 +7,6 @@ data class FluidEntry(
     val density: Int = 1000,
     val luminosity: Int = 0,
     val temperature: Int = 300,
-    val has_bucket_item: Boolean = true
+    val has_bucket_item: Boolean = true,
+    val has_block: Boolean = true
 )

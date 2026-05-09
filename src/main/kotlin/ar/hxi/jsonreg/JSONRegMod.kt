@@ -4,7 +4,9 @@ import ar.hxi.jsonreg.config.ModConfig
 import ar.hxi.jsonreg.registry.BlockRegistry
 import ar.hxi.jsonreg.registry.FluidRegistry
 import ar.hxi.jsonreg.registry.ItemRegistry
+import ar.hxi.jsonreg.registry.ResourceGenerator
 import com.google.gson.GsonBuilder
+import net.devtech.arrp.api.RRPCallback
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
@@ -26,8 +28,12 @@ class JSONRegMod : ModInitializer {
         ItemRegistry.registerAll(config.items)
         BlockRegistry.registerAll(config.blocks)
         FluidRegistry.registerAll(config.fluids)
+        
+        ResourceGenerator.registerResources(config.items, config.blocks, config.fluids)
+        
+        RRPCallback.BEFORE_USER.register { it.add(ResourceGenerator.RESOURCE_PACK) }
 
-        LOGGER.info("[JRegister] Registration complete. Check the console for any missing model warnings (that's normal).")
+        LOGGER.info("[JRegister] Registration complete. Resources are now loaded at runtime!")
     }
 }
 
