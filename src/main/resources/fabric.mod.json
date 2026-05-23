@@ -12,6 +12,9 @@
   "entrypoints": {
     "main": [
       "ar.hxi.jsonreg.JSONRegMod"
+    ],
+    "client": [
+      "ar.hxi.jsonreg.client.JSONRegClientMod"
     ]
   },
   "depends": {

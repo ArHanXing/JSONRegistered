@@ -17,13 +17,16 @@ class JSONRegMod : ModInitializer {
     companion object {
         val LOGGER = LoggerFactory.getLogger("jsonreg")
         const val MOD_ID = "jsonreg"
+        
+        var config: ModConfig = ModConfig()
+            private set
     }
 
     override fun onInitialize() {
         LOGGER.info("[JRegister] JSON Registered is starting up!")
 
         val configPath: Path = FabricLoader.getInstance().configDir.resolve("jsonreg_entries.json")
-        val config = ConfigLoader.load(configPath)
+        config = ConfigLoader.load(configPath)
 
         ItemRegistry.registerAll(config.items)
         BlockRegistry.registerAll(config.blocks)
