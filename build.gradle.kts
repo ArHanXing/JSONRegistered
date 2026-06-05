@@ -46,10 +46,15 @@ repositories {
         name = "TerraformersMC"
         url = uri("https://maven.terraformersmc.com/")
     }
-    
+        
     maven {
-        name = "JitPack"
-        url = uri("https://jitpack.io")
+        name = "Modrinth"
+        url = uri("https://api.modrinth.com/maven")
+    }
+
+    maven {
+        name = "FallenBreath"
+        url = uri("https://maven.fallenbreath.me/releases")
     }
 }
 
@@ -62,7 +67,8 @@ dependencies {
 
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     
-    modImplementation("com.github.TriibuNupsik:ARRP:${project.property("forked_arrp_branch")}")
+    modImplementation("maven.modrinth:yarrp:${project.property("yarrp_version")}")
+    modImplementation("me.fallenbreath:conditional-mixin-fabric:0.6.4")
 
     modLocalRuntime("dev.emi:emi-fabric:${project.property("emi_version")}")
 }

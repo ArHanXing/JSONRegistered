@@ -6,9 +6,11 @@ import ar.hxi.jsonreg.registry.FluidRegistry
 import ar.hxi.jsonreg.registry.ItemRegistry
 import ar.hxi.jsonreg.registry.ResourceGenerator
 import com.google.gson.GsonBuilder
-import net.devtech.arrp.api.RRPCallback
+import de.rubixdev.yarrp.api.PackPosition
+import de.rubixdev.yarrp.api.YarrpCallbacks
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.resource.ResourceType
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,7 +19,7 @@ class JSONRegMod : ModInitializer {
     companion object {
         val LOGGER = LoggerFactory.getLogger("jsonreg")
         const val MOD_ID = "jsonreg"
-        
+
         var config: ModConfig = ModConfig()
             private set
     }
@@ -31,10 +33,12 @@ class JSONRegMod : ModInitializer {
         ItemRegistry.registerAll(config.items)
         BlockRegistry.registerAll(config.blocks)
         FluidRegistry.registerAll(config.fluids)
-        
+
         ResourceGenerator.registerResources(config.items, config.blocks, config.fluids)
-        
-        RRPCallback.BEFORE_USER.register { it.add(ResourceGenerator.RESOURCE_PACK) }
+
+        YarrpCallbacks.register(PackPosition.BEFORE_USER, ResourceType.CLIENT_RESOURCES) {
+            add(ResourceGenerator.PACK)
+        }
 
         LOGGER.info("[JRegister] Registration complete. Resources are now loaded at runtime!")
     }
