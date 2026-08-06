@@ -36,7 +36,9 @@ class JSONRegMod : ModInitializer {
 
         ResourceGenerator.registerResources(config.items, config.blocks, config.fluids)
 
-        YarrpCallbacks.register(PackPosition.BEFORE_USER, ResourceType.CLIENT_RESOURCES) {
+        // 注意：必须用 BEFORE_ALL（由 MultiPackResourceManager 构造时对所有类型触发），
+        // BEFORE_USER 只在服务端数据包文件仓库（FolderRepositorySource）扫描时触发，客户端资源永远不会注入！
+        YarrpCallbacks.register(PackPosition.BEFORE_ALL, ResourceType.CLIENT_RESOURCES) {
             add(ResourceGenerator.PACK)
         }
 
