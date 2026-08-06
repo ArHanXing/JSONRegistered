@@ -62,6 +62,7 @@ object FluidRegistry {
             if (entry.has_block) {
                 val blockSettings = AbstractBlock.Settings.create()
                     .mapColor(net.minecraft.block.MapColor.WATER_BLUE)
+                    .replaceable()
                     .noCollision()
                     .strength(100.0f)
                     .luminance { state -> entry.luminosity }

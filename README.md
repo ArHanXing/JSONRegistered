@@ -12,21 +12,8 @@
 - 📦 **完整支持**：物品、方块、流体都可以哦！
 
 ## 在 AI 生成的 readme 之前的说明
-### 需要安装  Fork 版本的 [ARRP](https://github.com/TriibuNupsik/ARRP)
-### 目前的 Bug
-对于方块的注册，请**手动在你的材质资源包内添加它的 BlockState 文件**。
-
-一个示例的 BlockState 文件如下：
-```json
-// 位于 assets/jsonreg/blockstates/test_block.json
-{
-  "variants": {
-    "": { "model": "jsonreg:block/test_block" }
-  }
-}
-```
-
-流体桶不自带材质，因此请自定义材质。
+- 前置是 **YARRP Mod**
+- 流体桶不自带材质，因此请自定义材质。
 
 ### TODO
 使用 YARRP 重构资源注册，解决 Blockstates 自己定义的问题。
@@ -182,10 +169,6 @@
             │     └── test_fluid_still.png
 ```
 
-## 还有点说明
-
-本项目使用 JITPack.io 加载了 [ARRP 的 1.21.1 Fork 版本](https://github.com/TriibuNupsik/ARRP)，它还没有被合并x
-
-## 📄 许可证
+## 许可证
 
 MIT License
