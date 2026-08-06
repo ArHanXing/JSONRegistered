@@ -1,3 +1,5 @@
+[中文](README.md) | [English](README-en.md)
+
 ### 本项目由 Deepseek-v4-pro 和 Qwen3 全权负责（不是
 
 # JSON Registered
