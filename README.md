@@ -38,7 +38,7 @@
    - Fabric Loader ≥ 0.19.2
    - Fabric API ≥ 0.116.11
    - Fabric Language Kotlin ≥ 1.13.11
-   - [ARRP 的 1.21.1 Fork 版本](https://github.com/TriibuNupsik/ARRP)
+   - YARRP ≥ 0.2.0
 
 ## 配置文件结构
 
