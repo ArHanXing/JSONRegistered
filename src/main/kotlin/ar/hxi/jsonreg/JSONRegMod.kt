@@ -1,6 +1,9 @@
 package ar.hxi.jsonreg
 
+import ar.hxi.jsonreg.config.BlockEntry
+import ar.hxi.jsonreg.config.ItemEntry
 import ar.hxi.jsonreg.config.ModConfig
+import ar.hxi.jsonreg.config.RawFluidEntry
 import ar.hxi.jsonreg.registry.BlockRegistry
 import ar.hxi.jsonreg.registry.FluidRegistry
 import ar.hxi.jsonreg.registry.ItemRegistry
@@ -53,7 +56,7 @@ object ConfigLoader {
         return if (Files.exists(path)) {
             try {
                 Files.newBufferedReader(path).use { reader ->
-                    gson.fromJson(reader, ModConfig::class.java)
+                    gson.fromJson(reader, ModConfigRaw::class.java).toConfig()
                 }.also {
                     JSONRegMod.LOGGER.info("Config loaded successfully.")
                 }
@@ -68,6 +71,28 @@ object ConfigLoader {
             Files.writeString(path, gson.toJson(example))
             JSONRegMod.LOGGER.warn("No config found. Created an example at $path")
             example
+        }
+    }
+
+    /**
+     * 原始配置 DTO：Gson 不会调用 Kotlin data class 构造函数，缺失字段只会得到
+     * JVM 默认值（0/null/false）而非默认参数，因此流体条目先用全可空字段解析，
+     * 再在 [toConfig] 中把未填写的字段回退到原版水（见 [RawFluidEntry.resolve]）。
+     */
+    private data class ModConfigRaw(
+        val items: List<ItemEntry> = emptyList(),
+        val blocks: List<BlockEntry> = emptyList(),
+        val fluids: List<RawFluidEntry> = emptyList()
+    ) {
+        fun toConfig(): ModConfig {
+            val resolvedFluids = fluids.mapNotNull { raw ->
+                val resolved = raw.resolve()
+                if (resolved == null) {
+                    JSONRegMod.LOGGER.warn("[JRegister] Skipped a fluid entry: missing required 'id' field.")
+                }
+                resolved
+            }
+            return ModConfig(items = items, blocks = blocks, fluids = resolvedFluids)
         }
     }
 }

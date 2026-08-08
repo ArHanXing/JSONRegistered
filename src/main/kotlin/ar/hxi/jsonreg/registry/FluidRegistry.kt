@@ -132,9 +132,11 @@ object FluidRegistry {
             Block.dropStacks(state, world, pos, blockEntity)
         }
 
-        override fun getMaxFlowDistance(world: WorldView): Int = 4
+        override fun getMaxFlowDistance(world: WorldView): Int =
+            FluidEntry.WaterFallback.MAX_FLOW_DISTANCE
 
-        override fun getLevelDecreasePerBlock(world: WorldView): Int = 1
+        override fun getLevelDecreasePerBlock(world: WorldView): Int =
+            FluidEntry.WaterFallback.LEVEL_DECREASE_PER_BLOCK
 
         override fun canBeReplacedWith(
             state: FluidState,
@@ -145,7 +147,7 @@ object FluidRegistry {
         ): Boolean = direction == Direction.DOWN && !this.matchesType(fluid)
 
         override fun getTickRate(world: WorldView): Int =
-            // 粘度(viscosity) 映射为流动间隔：默认 1000 → 5（与原版水一致），粘度越大流动越慢
+            // 粘度(viscosity) 映射为流动间隔：不填时回退到原版水粘度 1000 → 5 tick（与水的 TICK_RATE 一致），粘度越大流动越慢
             (entry.viscosity / 200).coerceIn(1, 100)
 
         override fun tryFlow(world: World, fluidPos: BlockPos, state: FluidState) {
