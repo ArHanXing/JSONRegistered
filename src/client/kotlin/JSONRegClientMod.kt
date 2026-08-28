@@ -1,13 +1,16 @@
 package ar.hxi.jsonreg.client
 
 import ar.hxi.jsonreg.JSONRegMod
+import ar.hxi.jsonreg.config.BlockEntry
 import net.fabricmc.api.ClientModInitializer
+import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.fabricmc.fabric.api.resource.ResourceReloadListenerKeys
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.render.RenderLayer
 import net.minecraft.client.texture.Sprite
 import net.minecraft.fluid.Fluid
 import net.minecraft.registry.Registries
@@ -27,6 +30,7 @@ class JSONRegClientMod : ClientModInitializer {
             .registerReloadListener(FluidSpriteReloadListener())
 
         registerFluidRendering()
+        registerBlockRenderLayers()
 
         JSONRegMod.LOGGER.info("[JRegister] Client initialization complete!")
     }
@@ -66,6 +70,23 @@ class JSONRegClientMod : ClientModInitializer {
         }
 
         JSONRegMod.LOGGER.info("Fluid rendering handlers registered successfully!")
+    }
+
+    private fun registerBlockRenderLayers() {
+        JSONRegMod.LOGGER.info("Registering block render layers...")
+
+        JSONRegMod.config.blocks.forEach { entry ->
+            val block = Registries.BLOCK.get(Identifier.of(JSONRegMod.MOD_ID, entry.id))
+            val layer = when (entry.render_layer) {
+                BlockEntry.RenderLayerFallback.CUTOFF -> RenderLayer.getCutout()
+                BlockEntry.RenderLayerFallback.TRANSLUCENT -> RenderLayer.getTranslucent()
+                else -> RenderLayer.getSolid()
+            }
+            BlockRenderLayerMap.INSTANCE.putBlock(block, layer)
+            JSONRegMod.LOGGER.info("Registered render layer '${entry.render_layer}' for block: ${entry.id}")
+        }
+
+        JSONRegMod.LOGGER.info("Block render layers registered successfully!")
     }
 
     private inner class FluidSpriteReloadListener : SimpleSynchronousResourceReloadListener {

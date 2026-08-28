@@ -3,6 +3,7 @@ package ar.hxi.jsonreg
 import ar.hxi.jsonreg.config.BlockEntry
 import ar.hxi.jsonreg.config.ItemEntry
 import ar.hxi.jsonreg.config.ModConfig
+import ar.hxi.jsonreg.config.RawBlockEntry
 import ar.hxi.jsonreg.config.RawFluidEntry
 import ar.hxi.jsonreg.registry.BlockRegistry
 import ar.hxi.jsonreg.registry.FluidRegistry
@@ -81,10 +82,17 @@ object ConfigLoader {
      */
     private data class ModConfigRaw(
         val items: List<ItemEntry> = emptyList(),
-        val blocks: List<BlockEntry> = emptyList(),
+        val blocks: List<RawBlockEntry> = emptyList(),
         val fluids: List<RawFluidEntry> = emptyList()
     ) {
         fun toConfig(): ModConfig {
+            val resolvedBlocks = blocks.mapNotNull { raw ->
+                val resolved = raw.resolve()
+                if (resolved == null) {
+                    JSONRegMod.LOGGER.warn("[JRegister] Skipped a block entry: missing required 'id' field.")
+                }
+                resolved
+            }
             val resolvedFluids = fluids.mapNotNull { raw ->
                 val resolved = raw.resolve()
                 if (resolved == null) {
@@ -92,7 +100,7 @@ object ConfigLoader {
                 }
                 resolved
             }
-            return ModConfig(items = items, blocks = blocks, fluids = resolvedFluids)
+            return ModConfig(items = items, blocks = resolvedBlocks, fluids = resolvedFluids)
         }
     }
 }
