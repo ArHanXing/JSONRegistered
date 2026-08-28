@@ -4,6 +4,7 @@
 
 # JSON Registered
 
+给整合包作者，不过也只有我会在这种版本制作整合包。
 一个通过 JSON 配置文件快速注册物品、方块和流体的 Fabric 模组。  
 无需编写代码，只需编辑配置文件即可向游戏添加自定义内容。
 
@@ -22,13 +23,14 @@
 2. **首次生成**：首次启动时会自动生成示例配置文件
 3. **错误处理**：如果 JSON 格式错误，模组会记录错误日志并继续使用空配置，不会导致游戏崩溃
 4. **ID 冲突**：方块和对应的方块物品使用相同的 ID，不能同时存在同名的独立物品
-5. **流体特性**：粘度（viscosity）影响流动速度（值越大越慢，1000 ≈ 原版水）；密度（density）小于 1000 的流体会向上流动（轻流体/气体效果）；温度（temperature）暂未生效
+5. **流体特性**：粘度（viscosity）影响流动速度（值越大越慢，1000 ≈ 原版水）；密度（density）小于 1000 的流体会向上流动（轻流体/气体效果）；温度（temperature）暂未生效；**流体字段不填时自动回退到原版水的逻辑**（粘度 1000、密度 1000 向下流动、温度 300K）
 6. **资源优先级**：自动生成的资源可以被传统资源包覆盖
 7. **流体方块纹理**：流体方块需要使用 `<id>_still.png, <id>_flow.png` 命名的纹理文件
 ### 纹理要求
 - **格式**：PNG 文件
 - **尺寸**：推荐 16x16 或 32x32 像素
 - **命名**：必须与配置文件中的 `id` 一致
+- **透明度**：`render_layer` 为 `cutoff`/`translucent` 的方块请使用带 alpha 通道的 PNG 纹理
 ## 安装
 
 确保安装依赖：
@@ -83,6 +85,9 @@
 | `resistance` | 浮点数 | 否 | 6.0 | 爆炸抗性 |
 | `requires_tool` | 布尔值 | 否 | false | 是否需要工具才能掉落物品 |
 | `has_item` | 布尔值 | 否 | true | 是否自动创建对应的方块物品 |
+| `render_layer` | 字符串 | 否 | `solid` | 渲染层：`solid`（默认）/ `cutoff` / `translucent`，后两者行为同原版玻璃（透光、同种相邻隐藏共享面） |
+
+`render_layer` 可选值：`solid`（不透明，默认）、`cutoff`（剔除透明，如树叶）、`translucent`（半透明，如玻璃）。`cutoff`/`translucent` 方块与原版玻璃行为一致：光照完全穿透、与同种方块相邻时隐藏共享面、与普通方块相邻时正常显示。
 
 示例：
 
@@ -93,7 +98,8 @@
   "hardness": 2.5,
   "resistance": 10.0,
   "requires_tool": false,
-  "has_item": true
+  "has_item": true,
+  "render_layer": "translucent"
 }
 ```
 
@@ -110,6 +116,8 @@
 | `has_bucket_item` | 布尔值 | 否 | true | 是否创建桶物品                   |
 | `has_block` | 布尔值 | 否 | true | 是否创建流体方块                  |
 
+流体字段未填写时会自动回退到原版水的逻辑：粘度 1000（流动间隔 5 tick）、密度 1000（向下流动）、发光 0、温度 300K，且默认生成桶物品和流体方块（`has_bucket_item`/`has_block` 缺省为 `true`）。
+
 
 示例：
 
@@ -122,7 +130,8 @@
   "luminosity": 10,
   "temperature": 1370,
   "has_bucket_item": true,
-  "has_block": true }
+  "has_block": true
+}
 ```
 ## 🎨 自动生成资源
 

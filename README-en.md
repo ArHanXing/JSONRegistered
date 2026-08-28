@@ -4,6 +4,7 @@
 
 # JSON Registered
 
+For Modpack Makers.
 A Fabric mod that enables rapid registration of items, blocks, and fluids via JSON configuration files.  
 No coding required – just edit the config files to add custom content to the game.
 
@@ -22,7 +23,7 @@ No coding required – just edit the config files to add custom content to the g
 2. **First-run generation**: On first launch, example configuration files are automatically generated
 3. **Error handling**: If JSON format is invalid, the mod logs errors and continues with an empty configuration – no game crash
 4. **ID conflicts**: Blocks and their corresponding block items use the same ID; you cannot have a standalone item with the same ID at the same time
-5. **Fluid properties**: `viscosity` affects flow speed (higher = slower, 1000 ≈ water); `density` below 1000 makes the fluid flow upward (light fluid / gas effect); `temperature` is not yet functional
+5. **Fluid properties**: `viscosity` affects flow speed (higher = slower, 1000 ≈ water); `density` below 1000 makes the fluid flow upward (light fluid / gas effect); `temperature` is not yet functional; **fluid fields left unset automatically fall back to vanilla water logic** (viscosity 1000, density 1000 flowing downward, temperature 300K)
 6. **Resource priority**: Auto-generated resources can be overridden by traditional resource packs
 7. **Fluid block textures**: Fluid blocks require texture files named `<id>_still.png` and `<id>_flow.png`
 
@@ -30,6 +31,7 @@ No coding required – just edit the config files to add custom content to the g
 - **Format**: PNG files
 - **Size**: Recommended 16×16 or 32×32 pixels
 - **Naming**: Must match the `id` in the configuration file
+- **Transparency**: For blocks with `render_layer` set to `cutoff`/`translucent`, use PNG textures with an alpha channel
 
 ## Installation
 
@@ -84,6 +86,9 @@ Example:
 | `resistance` | Float | No | 6.0 | Blast resistance |
 | `requires_tool` | Boolean | No | false | Whether a tool is required to drop the item |
 | `has_item` | Boolean | No | true | Whether to automatically create the corresponding block item |
+| `render_layer` | String | No | `solid` | Render layer: `solid` (default) / `cutoff` / `translucent`; the latter two behave like vanilla glass (light passes through, shared faces hidden between same blocks) |
+
+`render_layer` options: `solid` (opaque, default), `cutoff` (cutout transparency, e.g., leaves), `translucent` (semi-transparent, e.g., glass). Blocks with `cutoff`/`translucent` behave like vanilla glass: light passes through completely, shared faces are hidden when adjacent to the same block, and faces facing them are drawn normally by adjacent solid blocks.
 
 Example:
 
@@ -94,7 +99,8 @@ Example:
   "hardness": 2.5,
   "resistance": 10.0,
   "requires_tool": false,
-  "has_item": true
+  "has_item": true,
+  "render_layer": "translucent"
 }
 ```
 
@@ -110,6 +116,8 @@ Example:
 | `temperature` | Integer | No | 300 | Temperature in Kelvin (not yet functional) |
 | `has_bucket_item` | Boolean | No | true | Whether to create a bucket item |
 | `has_block` | Boolean | No | true | Whether to create a fluid block |
+
+Fluid fields left unset automatically fall back to vanilla water logic: viscosity 1000 (flow interval of 5 ticks), density 1000 (flowing downward), luminosity 0, temperature 300K, and the bucket item and fluid block are created by default (`has_bucket_item`/`has_block` default to `true`).
 
 Example:
 
