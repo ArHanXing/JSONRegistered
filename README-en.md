@@ -86,11 +86,16 @@ Example:
 | `name` | String | No | Same as `id` | Display name of the block |
 | `hardness` | Float | No | 1.5 | Block hardness (affects mining speed) |
 | `resistance` | Float | No | 6.0 | Blast resistance |
-| `requires_tool` | Boolean | No | false | Whether a tool is required to drop the item |
-| `has_item` | Boolean | No | true | Whether to automatically create the corresponding block item |
+| `requires_tool` | Boolean | No | false | Whether a tool is required to drop the item (vanilla semantics: without a suitable tool the block still breaks, but drops nothing) |
+| `tool` | String | No | `none` | Which tool family can harvest this block: `pickaxe` / `axe` / `shovel` / `hoe` / `none`. Defaults to `pickaxe` when `requires_tool=true` and `tool` is omitted |
+| `has_item` | Boolean | No | true | Whether to automatically create the corresponding block item (when true, the block drops itself) |
 | `render_layer` | String | No | `solid` | Render layer: `solid` (default) / `cutoff` / `translucent`; the latter two behave like vanilla glass (light passes through, shared faces hidden between same blocks) |
 
 `render_layer` options: `solid` (opaque, default), `cutoff` (cutout transparency, e.g., leaves), `translucent` (semi-transparent, e.g., glass). Blocks with `cutoff`/`translucent` behave like vanilla glass: light passes through completely, shared faces are hidden when adjacent to the same block, and faces facing them are drawn normally by adjacent solid blocks.
+
+Blocks with `has_item=true` automatically get a "drops itself" loot table (same shape as vanilla `dirt.json`: `minecraft:block` + `survives_explosion`), so mining drops the block item while explosions destroy it without drops; with `requires_tool=true`, mining with the wrong tool drops nothing (vanilla behaviour). Blocks with `has_item=false` have no item, so no loot table is generated and they drop nothing.
+
+> **What `tool` is for**: in 1.21 "which tool can harvest this block" is not decided by `requires_tool` but by whether the block is in a `minecraft:mineable/<tool>` tag (the tool component's rule table: in `#minecraft:mineable/pickaxe` → pickaxes can harvest; in `#minecraft:incorrect_for_iron_tool` → iron tools cannot). Custom blocks are in no mineable tag by default, so `requires_tool: true` alone would mean **no tool can ever harvest it**. This mod writes such blocks into the matching tag based on `tool`; when neither field is set the block stays "harvestable by hand and drops itself".
 
 Example:
 
@@ -116,7 +121,6 @@ Example:
 | `density` | Integer | No | 1000 | Density (<1000 flows upward, ≥1000 flows downward) |
 | `luminosity` | Integer | No | 0 | Light level (0–15) |
 | `temperature` | Integer | No | 300 | Temperature in Kelvin (not yet functional) |
-| `has_bucket_item` | Boolean | No | true | **Deprecated**: bucket items and their models are now always generated (see below); kept for config compatibility |
 | `has_block` | Boolean | No | true | Whether to create a fluid block |
 | `bucket_texture` | String | No | `minecraft:item/bucket` | Base bucket texture used by the generated bucket model (16×16) |
 
@@ -138,7 +142,6 @@ Example:
   "density": 3000,
   "luminosity": 10,
   "temperature": 1370,
-  "has_bucket_item": true,
   "has_block": true
 }
 ```
@@ -162,6 +165,16 @@ The mod automatically generates the following:
 - Automatically sets the `all` texture path: `jsonreg:block/<id>`
 - Automatically creates the blockstate file
 - Automatically creates the block item model
+
+### Block Loot Tables
+- Path: `data/jsonreg/loot_table/blocks/<id>.json` (injected via YARRP's runtime data pack)
+- Equivalent to vanilla "drops itself": `minecraft:block` type, `survives_explosion` condition, drops `jsonreg:<id>`
+- Only generated for blocks with `has_item=true`
+
+### Mineable Tool Tags
+- Path: `data/minecraft/tags/block/mineable/<tool>.json`
+- Adds blocks to `minecraft:mineable/pickaxe|axe|shovel|hoe` according to the `tool` field
+- Tags merge by default (`replace=false`), so vanilla contents are preserved
 
 ### Fluid Block Models
 - Based on the `minecraft:block/cube_all` template

@@ -4,6 +4,7 @@ import ar.hxi.jsonreg.JSONRegMod
 import ar.hxi.jsonreg.config.BlockEntry
 import ar.hxi.jsonreg.config.FluidEntry
 import ar.hxi.jsonreg.config.ItemEntry
+import ar.hxi.jsonreg.config.ToolFallback
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -17,6 +18,10 @@ object ResourceGenerator {
     private val gson = Gson()
 
     lateinit var PACK: RuntimeResourcePack
+        private set
+
+    /** 服务端数据包（战利品表在 data/<ns>/loot_table/... 下）。 */
+    lateinit var DATA_PACK: RuntimeResourcePack
         private set
 
     fun registerResources(items: List<ItemEntry>, blocks: List<BlockEntry>, fluids: List<FluidEntry>) {
@@ -40,11 +45,26 @@ object ResourceGenerator {
             ),
         )
 
+        DATA_PACK = RuntimeResourcePack(
+            RuntimeResourcePack.createInfo(
+                Identifier.of(JSONRegMod.MOD_ID, "runtime_data"),
+                Text.literal("JSON Registered Data"),
+                modVersion,
+            ),
+            RuntimeResourcePack.createMetadata(
+                Text.literal("Runtime-generated data for JSON Registered"),
+                ResourceType.SERVER_DATA,
+            ),
+        )
+
         items.forEach { addItemModel(it.id) }
         blocks.forEach {
             addBlockModel(it.id)
             addBlockstate(it.id)
             addBlockItemModel(it.id)
+            // 方块默认掉落自身（对应原版方块生成的 “drops itself” 战利品表）。
+            // has_item=false 的方块没有对应物品，不生成表，破坏后自然什么都不掉。
+            if (it.has_item) addBlockLootTable(it.id)
         }
         fluids.filter { it.has_block }.forEach {
             addFluidBlockModel(it.id)
@@ -56,6 +76,8 @@ object ResourceGenerator {
             addBucketModel(it)
         }
         addLangFile(items, blocks, fluids)
+        // requires_tool 的方块必须进 mineable 标签，否则任何工具都挖不出掉落物
+        addMineableTags(blocks)
 
         JSONRegMod.LOGGER.info("Runtime resources registered successfully!")
     }
@@ -66,6 +88,81 @@ object ResourceGenerator {
         // 修正: 路径处理 - 去掉 "assets/" 前缀后分割
         val relativePath = assetPath.removePrefix("assets/").split("/")
         PACK.addResource(ResourceType.CLIENT_RESOURCES, relativePath, gson.toJson(json))
+    }
+
+    private fun addData(dataPath: String, json: JsonObject) {
+        val relativePath = dataPath.removePrefix("data/").split("/")
+        DATA_PACK.addResource(ResourceType.SERVER_DATA, relativePath, gson.toJson(json))
+    }
+
+    // ----- 方块战利品表（掉落自身）-----
+
+    /**
+     * 生成等价于原版 “drops itself” 的战利品表（参考 dirt.json / 数据生成器里的 addDrop）：
+     * `minecraft:block` + `survives_explosion` 条件 + 一个掉落自身的 item entry。
+     *
+     * 路径必须是 `data/<ns>/loot_table/blocks/<id>.json`：方块默认的战利品表 key 就是
+     * `Registries.BLOCK.getKey(block).withPrefixedPath("blocks/")`，即 `jsonreg:blocks/<id>`。
+     *
+     * requires_tool 不在表里加条件——原版是在破坏时用 `player.canHarvest(state)` 决定要不要
+     * 走 afterBreak，所以这里的表保持和原版 dirt 一样的形状即可。
+     */
+    private fun addBlockLootTable(id: String) {
+        val table = JsonObject().apply {
+            addProperty("type", "minecraft:block")
+            add("pools", JsonArray().apply {
+                add(JsonObject().apply {
+                    addProperty("rolls", 1.0)
+                    addProperty("bonus_rolls", 0.0)
+                    add("conditions", JsonArray().apply {
+                        add(JsonObject().apply {
+                            addProperty("condition", "minecraft:survives_explosion")
+                        })
+                    })
+                    add("entries", JsonArray().apply {
+                        add(JsonObject().apply {
+                            addProperty("type", "minecraft:item")
+                            addProperty("name", "${JSONRegMod.MOD_ID}:$id")
+                        })
+                    })
+                })
+            })
+            // 和原版一致：给这张表一个固定的随机序列 id
+            addProperty("random_sequence", "${JSONRegMod.MOD_ID}:blocks/$id")
+        }
+        addData("data/${JSONRegMod.MOD_ID}/loot_table/blocks/$id.json", table)
+    }
+
+    // ----- 挖掘工具标签（mineable/*）-----
+
+    /**
+     * `requires_tool` 只是把 `AbstractBlock.Settings.toolRequired` 设成 true，它本身**不会**
+     * 让任何工具“可收获”：`PlayerEntity.canHarvest` 里判断的是
+     * `!state.isToolRequired() || 主手物品 isSuitableFor(state)`，而 `isSuitableFor` 走的是
+     * 工具组件的规则表——镐的规则是 “#minecraft:mineable/pickaxe → 可掉落”、
+     * “#minecraft:incorrect_for_iron_tool → 不可掉落”。所以方块如果不在 mineable 标签里，
+     * 拿任何工具挖都是“破坏了但什么都不掉”。
+     *
+     * 这里按 `tool` 字段把方块写进对应的 `minecraft:mineable/<tool>` 标签；
+     * `requires_tool=true` 又没写 `tool` 时，[RawBlockEntry.resolve] 已经把它回退成 pickaxe。
+     * 标签是跨数据包合并的（默认 replace=false），所以只写自己的条目不会覆盖原版内容。
+     */
+    private fun addMineableTags(blocks: List<BlockEntry>) {
+        blocks.filter { it.tool != ToolFallback.NONE }
+            .groupBy { it.tool }
+            .forEach { (tool, entries) ->
+                val values = JsonArray().apply {
+                    entries.forEach { add("${JSONRegMod.MOD_ID}:${it.id}") }
+                }
+                addData(
+                    "data/minecraft/tags/block/mineable/$tool.json",
+                    JsonObject().apply { add("values", values) }
+                )
+                JSONRegMod.LOGGER.info(
+                    "[JRegister] Added ${entries.size} block(s) to minecraft:mineable/$tool: " +
+                        entries.joinToString { it.id }
+                )
+            }
     }
 
     // ----- 物品模型 -----

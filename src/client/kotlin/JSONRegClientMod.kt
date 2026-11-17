@@ -2,6 +2,7 @@ package ar.hxi.jsonreg.client
 
 import ar.hxi.jsonreg.JSONRegMod
 import ar.hxi.jsonreg.config.BlockEntry
+import ar.hxi.jsonreg.config.RenderLayerFallback
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler
@@ -78,8 +79,8 @@ class JSONRegClientMod : ClientModInitializer {
         JSONRegMod.config.blocks.forEach { entry ->
             val block = Registries.BLOCK.get(Identifier.of(JSONRegMod.MOD_ID, entry.id))
             val layer = when (entry.render_layer) {
-                BlockEntry.RenderLayerFallback.CUTOFF -> RenderLayer.getCutout()
-                BlockEntry.RenderLayerFallback.TRANSLUCENT -> RenderLayer.getTranslucent()
+                RenderLayerFallback.CUTOFF -> RenderLayer.getCutout()
+                RenderLayerFallback.TRANSLUCENT -> RenderLayer.getTranslucent()
                 else -> RenderLayer.getSolid()
             }
             BlockRenderLayerMap.INSTANCE.putBlock(block, layer)

@@ -70,11 +70,11 @@ object FluidRegistry {
 
             // 桶物品必须存在，否则“收流体”这条路是坏的：
             // FluidBlock#tryDrainFluid 会先把流体方块删掉，再返回 new ItemStack(fluid.getBucketItem())。
-            // 以前 has_bucket_item=false 时 getBucketItem() 返回 Items.AIR，得到的空栈被调用方 BucketItem
-            // 判定为失败（!itemStack.isEmpty() 不成立），于是流体被凭空吞掉、桶也不返还。
+            // 如果 getBucketItem() 返回 Items.AIR，得到的空栈会被调用方 BucketItem 判定为失败
+            // （!itemStack.isEmpty() 不成立），于是流体被凭空吞掉、桶也不返还。
             // 科技复兴的流体单元同理：它要求抽出来的物品是 RebornCore 的 ItemFluidInfo（RebornCore 通过
             // mixin 给原版 BucketItem 实现了该接口），并且 !isEmpty()；返回空气时整条链路直接失败。
-            // 因此只要流体有方块就注册 jsonreg:<id>_bucket，has_bucket_item 不再参与判断。
+            // 所以只要流体有方块就注册 jsonreg:<id>_bucket；没有方块时桶既装不到也倒不出，直接跳过。
             if (entry.has_block) {
                 val bucket = BucketItem(
                     still,
@@ -85,13 +85,6 @@ object FluidRegistry {
                     Registries.ITEM,
                     Identifier.of(JSONRegMod.MOD_ID, "${entry.id}_bucket"),
                     bucket
-                )
-            } else if (entry.has_bucket_item) {
-                // 没有流体方块时桶既装不到也倒不出（BucketItem 放置依赖 toBlockState），
-                // 与其注册一个只会被消耗掉的空桶，不如直接跳过并提示。
-                JSONRegMod.LOGGER.warn(
-                    "[JRegister] Fluid '${entry.id}' has has_bucket_item=true but has_block=false; " +
-                        "bucket item skipped because it could neither fill nor place."
                 )
             }
 

@@ -46,6 +46,12 @@ class JSONRegMod : ModInitializer {
             add(ResourceGenerator.PACK)
         }
 
+        // 战利品表属于服务端数据（data/...），必须单独注册一个 SERVER_DATA 的包，
+        // 否则方块破坏时按 loot_table key 找不到表 → 什么都不掉。
+        YarrpCallbacks.register(PackPosition.BEFORE_ALL, ResourceType.SERVER_DATA) {
+            add(ResourceGenerator.DATA_PACK)
+        }
+
         LOGGER.info("[JRegister] Registration complete. Resources are now loaded at runtime!")
     }
 }

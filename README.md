@@ -73,11 +73,16 @@
 | `name` | 字符串 | 否 | 与 `id` 相同 | 方块的显示名称 |
 | `hardness` | 浮点数 | 否 | 1.5 | 方块硬度（影响挖掘速度） |
 | `resistance` | 浮点数 | 否 | 6.0 | 爆炸抗性 |
-| `requires_tool` | 布尔值 | 否 | false | 是否需要工具才能掉落物品 |
-| `has_item` | 布尔值 | 否 | true | 是否自动创建对应的方块物品 |
+| `requires_tool` | 布尔值 | 否 | false | 是否需要工具才能掉落物品（原版语义：无合适工具时方块仍会被破坏，但什么都不掉） |
+| `tool` | 字符串 | 否 | `none` | 该方块属于哪种工具的挖掘集合：`pickaxe` / `axe` / `shovel` / `hoe` / `none`。`requires_tool=true` 且不填时自动回退为 `pickaxe` |
+| `has_item` | 布尔值 | 否 | true | 是否自动创建对应的方块物品（为 true 时默认掉落自身） |
 | `render_layer` | 字符串 | 否 | `solid` | 渲染层：`solid`（默认）/ `cutoff` / `translucent`，后两者行为同原版玻璃（透光、同种相邻隐藏共享面） |
 
 `render_layer` 可选值：`solid`（不透明，默认）、`cutoff`（剔除透明，如树叶）、`translucent`（半透明，如玻璃）。`cutoff`/`translucent` 方块与原版玻璃行为一致：光照完全穿透、与同种方块相邻时隐藏共享面、与普通方块相邻时正常显示。
+
+`has_item=true` 的方块会自动生成一张“掉落自身”的战利品表（形状同原版 `dirt.json`：`minecraft:block` + `survives_explosion`），所以挖掘即掉落对应方块物品，被爆炸破坏则不掉落；`requires_tool=true` 时用错工具挖不会掉落（与原版一致）。`has_item=false` 的方块没有对应物品，因此不生成战利品表、破坏后什么都不掉。
+
+> **`tool` 是干什么的**：1.21 里“哪种工具能挖出掉落物”不是由 `requires_tool` 决定的，而是看方块在不在 `minecraft:mineable/<tool>` 标签里（工具组件的规则表：在 `#minecraft:mineable/pickaxe` 里 → 镐可收获；在 `#minecraft:incorrect_for_iron_tool` 里 → 铁镐不行）。自定义方块默认不在任何 mineable 标签里，所以只写 `requires_tool: true` 会导致**拿什么工具都挖不掉落**。本模组会按 `tool` 字段自动把这些方块写进对应标签，`requires_tool` 与 `tool` 都不填则保持“徒手可挖、掉落自身”。
 
 示例：
 
@@ -103,7 +108,6 @@
 | `density` | 整数 | 否 | 1000 | 密度（<1000 向上流动，≥1000 向下流动） |
 | `luminosity` | 整数 | 否 | 0 | 发光等级（0-15）                |
 | `temperature` | 整数 | 否 | 300 | 温度（开尔文，暂未生效） |
-| `has_bucket_item` | 布尔值 | 否 | true | **已废弃**：桶物品与桶模型已总是生成（见下方说明），该字段保留仅为兼容旧配置 |
 | `has_block` | 布尔值 | 否 | true | 是否创建流体方块                  |
 | `bucket_texture` | 字符串 | 否 | `minecraft:item/bucket` | 桶模型用的底桶纹理（16x16） |
 
@@ -125,7 +129,6 @@
   "density": 3000,
   "luminosity": 10,
   "temperature": 1370,
-  "has_bucket_item": true,
   "has_block": true
 }
 ```
@@ -148,6 +151,16 @@
 - 自动设置 `all` 纹理路径：`jsonreg:block/<id>`
 - 自动创建方块状态文件（blockstate）
 - 自动创建方块物品模型
+
+### 方块战利品表
+- 路径：`data/jsonreg/loot_table/blocks/<id>.json`（走 YARRP 的运行时数据包注入）
+- 内容等价于原版“掉落自身”：`minecraft:block` 类型、`survives_explosion` 条件、掉落 `jsonreg:<id>`
+- 仅对 `has_item=true` 的方块生成
+
+### 挖掘工具标签
+- 路径：`data/minecraft/tags/block/mineable/<tool>.json`
+- 按 `tool` 字段把方块加进 `minecraft:mineable/pickaxe|axe|shovel|hoe`
+- 标签默认是合并的（`replace=false`），不会覆盖原版内容
 
 ### 流体方块模型
 - 基于 `minecraft:block/cube_all` 模板
