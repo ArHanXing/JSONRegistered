@@ -19,15 +19,20 @@ import net.minecraft.item.Items
 import net.minecraft.registry.Registries
 import net.minecraft.registry.Registry
 import net.minecraft.registry.tag.BlockTags
+import net.minecraft.sound.SoundEvent
+import net.minecraft.sound.SoundEvents
 import net.minecraft.state.StateManager
 import net.minecraft.state.property.Properties
 import net.minecraft.util.Identifier
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Direction
+import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.BlockView
 import net.minecraft.world.World
 import net.minecraft.world.WorldAccess
 import net.minecraft.world.WorldView
+import java.util.EnumMap
+import java.util.Optional
 
 object FluidRegistry {
     fun registerAll(entries: List<FluidEntry>) {
@@ -63,30 +68,45 @@ object FluidRegistry {
             Registry.register(Registries.FLUID, stillId, still)
             Registry.register(Registries.FLUID, flowingId, flowing)
 
+            // 桶物品必须存在，否则“收流体”这条路是坏的：
+            // FluidBlock#tryDrainFluid 会先把流体方块删掉，再返回 new ItemStack(fluid.getBucketItem())。
+            // 以前 has_bucket_item=false 时 getBucketItem() 返回 Items.AIR，得到的空栈被调用方 BucketItem
+            // 判定为失败（!itemStack.isEmpty() 不成立），于是流体被凭空吞掉、桶也不返还。
+            // 科技复兴的流体单元同理：它要求抽出来的物品是 RebornCore 的 ItemFluidInfo（RebornCore 通过
+            // mixin 给原版 BucketItem 实现了该接口），并且 !isEmpty()；返回空气时整条链路直接失败。
+            // 因此只要流体有方块就注册 jsonreg:<id>_bucket，has_bucket_item 不再参与判断。
+            if (entry.has_block) {
+                val bucket = BucketItem(
+                    still,
+                    Item.Settings().maxCount(1).recipeRemainder(Items.BUCKET)
+                )
+                bucketRef[0] = bucket
+                Registry.register(
+                    Registries.ITEM,
+                    Identifier.of(JSONRegMod.MOD_ID, "${entry.id}_bucket"),
+                    bucket
+                )
+            } else if (entry.has_bucket_item) {
+                // 没有流体方块时桶既装不到也倒不出（BucketItem 放置依赖 toBlockState），
+                // 与其注册一个只会被消耗掉的空桶，不如直接跳过并提示。
+                JSONRegMod.LOGGER.warn(
+                    "[JRegister] Fluid '${entry.id}' has has_bucket_item=true but has_block=false; " +
+                        "bucket item skipped because it could neither fill nor place."
+                )
+            }
+
             if (entry.has_block) {
                 val blockSettings = AbstractBlock.Settings.create()
                     .mapColor(net.minecraft.block.MapColor.WATER_BLUE)
                     .replaceable()
                     .noCollision()
                     .strength(100.0f)
-                    .luminance { state -> entry.luminosity }
+                    .luminance { _ -> entry.luminosity }
                     .dropsNothing()
                     .liquid()
                 val block = FluidBlock(still, blockSettings)
                 blockRef[0] = block
                 Registry.register(Registries.BLOCK, stillId, block)
-            }
-
-            if (entry.has_bucket_item) {
-                bucketRef[0] = BucketItem(
-                    still,
-                    Item.Settings().maxCount(1).recipeRemainder(Items.BUCKET)
-                )
-                Registry.register(
-                    Registries.ITEM,
-                    Identifier.of(JSONRegMod.MOD_ID, "${entry.id}_bucket"),
-                    bucketRef[0]
-                )
             }
         }
     }
@@ -99,6 +119,10 @@ object FluidRegistry {
         private val flowingRef: () -> JsonRegFluid,
         private val stillRef: () -> JsonRegFluid
     ) : FlowableFluid() {
+
+        /** 密度 < 1000 → 轻流体（气体），重力方向相反：向上流动。 */
+        private val isLightFluid: Boolean
+            get() = entry.density < FluidEntry.WaterFallback.DENSITY
 
         override fun getStill(): Fluid = if (still) this else stillRef()
         override fun getFlowing(): Fluid = if (still) flowingRef() else this
@@ -144,65 +168,104 @@ object FluidRegistry {
             pos: BlockPos,
             fluid: Fluid,
             direction: Direction
-        ): Boolean = direction == Direction.DOWN && !this.matchesType(fluid)
+        ): Boolean =
+            // 水的“被替换”方向来自上方（下落的水把别的流体挤开），
+            // 轻流体反过来：从下方顶上来时把目标格里的东西挤开。
+            if (isLightFluid) direction == Direction.UP && !this.matchesType(fluid)
+            else direction == Direction.DOWN && !this.matchesType(fluid)
 
         override fun getTickRate(world: WorldView): Int =
             // 粘度(viscosity) 映射为流动间隔：不填时回退到原版水粘度 1000 → 5 tick（与水的 TICK_RATE 一致），粘度越大流动越慢
             (entry.viscosity / 200).coerceIn(1, 100)
 
+        override fun getBucketFillSound(): Optional<SoundEvent> = Optional.of(SoundEvents.ITEM_BUCKET_FILL)
+
+        override fun getBlastResistance(): Float = 100f
+
+        // ------------------------------------------------------------------
+        // 流动调度
+        // ------------------------------------------------------------------
+
+        /**
+         * 原版 [FlowableFluid.getUpdatedState] 只为“向下流”设计：它只看水平邻居和上方邻居，
+         * 从下方取不到任何东西。轻流体必须反过来看下方，否则每次计划刻都会算出 EMPTY：
+         * 流体方块被删掉 → 下面的方块再把它顶上来 → 无限循环，每个方块每 tick 都在重建自己，
+         * 这就是“气体流动一直变化、tick 消耗猎奇”的根源。
+         *
+         * 这里把轻流体的状态计算整体换成向上版本，让 [FlowableFluid.onScheduledTick]
+         * 重算出的状态与现有状态一致，从而只流动、不抖动。
+         */
+        override fun getUpdatedState(world: World, pos: BlockPos, state: BlockState): FluidState =
+            if (isLightFluid) getUpdatedStateUp(world, pos, state)
+            else super.getUpdatedState(world, pos, state)
+
         override fun tryFlow(world: World, fluidPos: BlockPos, state: FluidState) {
             if (state.isEmpty()) return
-            // 密度 ≥ 1000：正常流体，走原版逻辑（向下流动）
-            if (entry.density >= 1000) {
+            if (!isLightFluid) {
+                // 密度 ≥ 1000：正常流体，走原版逻辑（向下流动）
                 super.tryFlow(world, fluidPos, state)
                 return
             }
-            // 密度 < 1000：轻流体，向上流动
+
+            // 密度 < 1000：轻流体，向上流动（原版 tryFlow 的镜像版本）
             val blockState = world.getBlockState(fluidPos)
             val upPos = fluidPos.up()
             val upBlockState = world.getBlockState(upPos)
-            val upFluidState = getUpdatedStateUp(world, upPos)
-            if (canFlow(
+            val upFluidState = getUpdatedStateUp(world, upPos, upBlockState)
+            if (!upFluidState.isEmpty &&
+                canFlow(
                     world, fluidPos, blockState, Direction.UP,
                     upPos, upBlockState, world.getFluidState(upPos), upFluidState.fluid
                 )
             ) {
                 flow(world, upPos, upBlockState, Direction.UP, upFluidState)
-                if (countNeighboringSourcesLight(world, fluidPos) >= 3) {
-                    flowToSidesLight(world, fluidPos, state, blockState)
+                if (countNeighboringSources(world, fluidPos) >= 3) {
+                    flowToSidesUp(world, fluidPos, state, blockState)
                 }
-            } else if (state.isStill() || !canFlowUpTo(world, upFluidState.fluid, upPos, upBlockState)) {
-                flowToSidesLight(world, fluidPos, state, blockState)
+            } else if (state.isStill || !canFlowUpTo(world, upFluidState.fluid, fluidPos, blockState, upPos, upBlockState)) {
+                // 顶不动了（上方被挡）才向四周铺开：和原版水“落地后铺开”对称
+                flowToSidesUp(world, fluidPos, state, blockState)
             }
         }
 
-        // 轻流体版“计算上方流体状态”：原版 getUpdatedState 只为向下流设计（从水平/上方邻居取值，
-        // 从不看下方邻居），对上升流会永远算出 EMPTY，导致气体无法上升。这里改为从下方邻居继承 level。
-        private fun getUpdatedStateUp(world: World, pos: BlockPos): FluidState {
-            // 正下方有同族流体：继承它的 level 并衰减 1，形成上升柱
-            val below = world.getFluidState(pos.down())
-            if (below.fluid.matchesType(this)) {
-                val newLevel = below.level - getLevelDecreasePerBlock(world)
-                return if (newLevel <= 0) Fluids.EMPTY.defaultState else getFlowing(newLevel, false)
+        // ------------------------------------------------------------------
+        // 轻流体（气体）的向上流动，逐条镜像原版 FlowableFluid 的向下实现
+        // ------------------------------------------------------------------
+
+        /** 对应原版 [FlowableFluid.getUpdatedState]：把“上方来源”换成“下方来源”。 */
+        private fun getUpdatedStateUp(world: World, pos: BlockPos, state: BlockState): FluidState {
+            // 正下方有同族流体 → 本格是“满液面”的上升柱，和原版“上方有水我就正在下落”完全对称。
+            // 注意这里不能像旧实现那样把 level 一路减下去：减没之后每 tick 都会算出 EMPTY，
+            // 流体方块被删掉又被下面顶回来，就是这个 bug 的 tick 灾难来源。
+            val belowPos = pos.down()
+            val belowState = world.getBlockState(belowPos)
+            val below = belowState.fluidState
+            if (below.fluid.matchesType(this) && receivesFlow(world, pos, state, belowPos, belowState, Direction.DOWN)) {
+                return getFlowing(8, true)
             }
-            // 正下方没有：从水平邻居取最大 level（气体从源向侧面扩散后再上升）
+
+            // 水平邻居：与原版一致，气体会从源向侧面扩散，level 逐格衰减
             var maxLevel = 0
             for (direction in Direction.Type.HORIZONTAL) {
-                val neighbor = world.getFluidState(pos.offset(direction))
-                if (neighbor.fluid.matchesType(this)) {
-                    maxLevel = maxOf(maxLevel, neighbor.level)
+                val fromPos = pos.offset(direction)
+                val fromState = world.getBlockState(fromPos)
+                val from = fromState.fluidState
+                if (from.fluid.matchesType(this) && receivesFlow(world, pos, state, fromPos, fromState, direction)) {
+                    maxLevel = maxOf(maxLevel, from.level)
                 }
             }
+
             val level = maxLevel - getLevelDecreasePerBlock(world)
             return if (level <= 0) Fluids.EMPTY.defaultState else getFlowing(level, false)
         }
 
-        // 轻流体版“向四周流”（对应原版 private flowToSides）
-        private fun flowToSidesLight(world: World, pos: BlockPos, fluidState: FluidState, blockState: BlockState) {
+        /** 对应原版 private flowToSides。 */
+        private fun flowToSidesUp(world: World, pos: BlockPos, fluidState: FluidState, blockState: BlockState) {
             var level = fluidState.level - getLevelDecreasePerBlock(world)
             if (fluidState.get(Properties.FALLING)) level = 7
             if (level <= 0) return
-            for ((direction, spreadState) in getSpread(world, pos, blockState)) {
+
+            for ((direction, spreadState) in getSpreadUp(world, pos, blockState)) {
                 val spreadPos = pos.offset(direction)
                 val spreadBlockState = world.getBlockState(spreadPos)
                 if (canFlow(
@@ -215,31 +278,137 @@ object FluidRegistry {
             }
         }
 
-        // 轻流体版“统计相邻源方块”（对应原版 private countNeighboringSources）
-        private fun countNeighboringSourcesLight(world: WorldView, pos: BlockPos): Int {
+        /**
+         * 对应原版 protected getSpread：优先选择“能更快继续上升”的方向。
+         * 原版用 getMinFlowDownDistance 找最近的下落点，这里换成 getMinRiseDistance。
+         */
+        private fun getSpreadUp(world: World, pos: BlockPos, state: BlockState): Map<Direction, FluidState> {
+            var best = 1000
+            val spread = EnumMap<Direction, FluidState>(Direction::class.java)
+
+            for (direction in Direction.Type.HORIZONTAL) {
+                val sidePos = pos.offset(direction)
+                val sideState = world.getBlockState(sidePos)
+                val sideFluid = sideState.fluidState
+                val candidate = getUpdatedStateUp(world, sidePos, sideState)
+                if (!canFlowThrough(world, candidate.fluid, pos, state, direction, sidePos, sideState, sideFluid)) {
+                    continue
+                }
+
+                val upPos = sidePos.up()
+                val canRise = canFlowUpTo(world, getFlowing(), sidePos, sideState, upPos, world.getBlockState(upPos))
+                val distance = if (canRise) 0
+                else getMinRiseDistance(world, sidePos, 1, direction.opposite, sideState)
+
+                if (distance < best) spread.clear()
+                if (distance <= best) {
+                    spread[direction] = candidate
+                    best = distance
+                }
+            }
+            return spread
+        }
+
+        /** 对应原版 private getMinFlowDownDistance，方向换成向上。 */
+        private fun getMinRiseDistance(
+            world: WorldView,
+            pos: BlockPos,
+            depth: Int,
+            from: Direction,
+            state: BlockState
+        ): Int {
+            var best = 1000
+            for (direction in Direction.Type.HORIZONTAL) {
+                if (direction == from) continue
+                val sidePos = pos.offset(direction)
+                val sideState = world.getBlockState(sidePos)
+                if (!canFlowThrough(world, getFlowing(), pos, state, direction, sidePos, sideState, sideState.fluidState)) {
+                    continue
+                }
+                val upPos = sidePos.up()
+                if (canFlowUpTo(world, getFlowing(), sidePos, sideState, upPos, world.getBlockState(upPos))) {
+                    return depth
+                }
+                if (depth < getMaxFlowDistance(world)) {
+                    val distance = getMinRiseDistance(world, sidePos, depth + 1, direction.opposite, sideState)
+                    if (distance < best) best = distance
+                }
+            }
+            return best
+        }
+
+        /** 对应原版 private canFill。 */
+        private fun canFill(world: BlockView, pos: BlockPos, state: BlockState, fluid: Fluid): Boolean {
+            val block = state.block
+            if (block is FluidFillable) {
+                return block.canFillWithFluid(null, world, pos, state, fluid)
+            }
+            if (block is DoorBlock || state.isIn(BlockTags.SIGNS) || state.isOf(Blocks.LADDER)
+                || state.isOf(Blocks.SUGAR_CANE) || state.isOf(Blocks.BUBBLE_COLUMN)
+            ) {
+                return false
+            }
+            return !state.isOf(Blocks.NETHER_PORTAL) && !state.isOf(Blocks.END_PORTAL)
+                && !state.isOf(Blocks.END_GATEWAY) && !state.isOf(Blocks.STRUCTURE_VOID)
+                && !state.blocksMovement()
+        }
+
+        /** 对应原版 private canFlowThrough。 */
+        private fun canFlowThrough(
+            world: BlockView,
+            fluid: Fluid,
+            pos: BlockPos,
+            state: BlockState,
+            face: Direction,
+            toPos: BlockPos,
+            toState: BlockState,
+            toFluidState: FluidState
+        ): Boolean =
+            !isMatchingAndStill(toFluidState)
+                && receivesFlow(world, pos, state, toPos, toState, face)
+                && canFill(world, toPos, toState, fluid)
+
+        /** 对应原版 private canFlowDownTo，方向换成向上。 */
+        private fun canFlowUpTo(
+            world: BlockView,
+            fluid: Fluid,
+            pos: BlockPos,
+            state: BlockState,
+            upPos: BlockPos,
+            upState: BlockState
+        ): Boolean {
+            if (!receivesFlow(world, pos, state, upPos, upState, Direction.UP)) return false
+            return if (upState.fluidState.fluid.matchesType(this)) true else canFill(world, upPos, upState, fluid)
+        }
+
+        /** 对应原版 private countNeighboringSources。 */
+        private fun countNeighboringSources(world: WorldView, pos: BlockPos): Int {
             var count = 0
             for (direction in Direction.Type.HORIZONTAL) {
                 val neighborState = world.getFluidState(pos.offset(direction))
-                if (neighborState.fluid.matchesType(this) && neighborState.isStill()) count++
+                if (neighborState.fluid.matchesType(this) && neighborState.isStill) count++
             }
             return count
         }
 
-        // 轻流体版“能否向上填充”（对应原版 private canFlowDownTo，方向改为 UP）
-        private fun canFlowUpTo(world: BlockView, fluid: Fluid, fromPos: BlockPos, fromState: BlockState): Boolean {
-            if (fromState.fluidState.fluid.matchesType(this)) return true
-            val block = fromState.block
-            if (block is FluidFillable) return block.canFillWithFluid(null, world, fromPos, fromState, fluid)
-            if (block is DoorBlock || fromState.isIn(BlockTags.SIGNS) || fromState.isOf(Blocks.LADDER)
-                || fromState.isOf(Blocks.SUGAR_CANE) || fromState.isOf(Blocks.BUBBLE_COLUMN)
-            ) {
-                return false
-            }
-            return !fromState.isOf(Blocks.NETHER_PORTAL) && !fromState.isOf(Blocks.END_PORTAL)
-                && !fromState.isOf(Blocks.END_GATEWAY) && !fromState.isOf(Blocks.STRUCTURE_VOID)
-                && !fromState.blocksMovement()
-        }
+        private fun isMatchingAndStill(state: FluidState): Boolean =
+            state.fluid.matchesType(this) && state.isStill
 
-        override fun getBlastResistance(): Float = 100f
+        /**
+         * 对应原版 private receivesFlow：判断两个相邻方块之间是否被碰撞箱“挡住”。
+         * 原版为了性能加了 200 项缓存；这边只用于轻流体，深度有限，直接算即可。
+         */
+        private fun receivesFlow(
+            world: BlockView,
+            pos: BlockPos,
+            state: BlockState,
+            fromPos: BlockPos,
+            fromState: BlockState,
+            face: Direction
+        ): Boolean {
+            val shape = state.getCollisionShape(world, pos)
+            val fromShape = fromState.getCollisionShape(world, fromPos)
+            return !VoxelShapes.adjacentSidesCoverSquare(shape, fromShape, face)
+        }
     }
 }

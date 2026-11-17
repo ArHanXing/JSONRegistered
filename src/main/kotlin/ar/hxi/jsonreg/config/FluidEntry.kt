@@ -7,8 +7,18 @@ data class FluidEntry(
     val density: Int = WaterFallback.DENSITY,
     val luminosity: Int = WaterFallback.LUMINOSITY,
     val temperature: Int = WaterFallback.TEMPERATURE,
+    /**
+     * 已废弃：桶物品现在只要 [has_block] 为 true 就总会注册（否则收流体会把流体方块吞掉却不返还桶）。
+     * 字段保留仅为兼容旧配置，不再影响行为。
+     */
     val has_bucket_item: Boolean = true,
-    val has_block: Boolean = true
+    val has_block: Boolean = true,
+    /**
+     * 桶模型用的“底桶”纹理，缺省是原版铁桶（`minecraft:item/bucket`）。
+     * 生成的桶模型 = 这张底桶纹理 + 从 `<id>_still` 流体纹理上截一块贴到桶口，
+     * 所以不需要再为每个流体手画桶材质。
+     */
+    val bucket_texture: String = ""
 ) {
     companion object WaterFallback {
         // 原版水（WaterFluid / WaterFluidBlock）的各项物理属性，
@@ -39,7 +49,8 @@ internal data class RawFluidEntry(
     val luminosity: Int? = null,
     val temperature: Int? = null,
     val has_bucket_item: Boolean? = null,
-    val has_block: Boolean? = null
+    val has_block: Boolean? = null,
+    val bucket_texture: String? = null
 ) {
     /**
      * 将原始条目解析为完整 [FluidEntry]，缺失字段回退到原版水逻辑；
@@ -55,7 +66,8 @@ internal data class RawFluidEntry(
             luminosity = luminosity ?: FluidEntry.WaterFallback.LUMINOSITY,
             temperature = temperature ?: FluidEntry.WaterFallback.TEMPERATURE,
             has_bucket_item = has_bucket_item ?: true,
-            has_block = has_block ?: true
+            has_block = has_block ?: true,
+            bucket_texture = bucket_texture ?: ""
         )
     }
 }

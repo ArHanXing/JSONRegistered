@@ -16,7 +16,8 @@ No coding required – just edit the config files to add custom content to the g
 
 ## Notes before the AI-generated README
 - Dependency is **YARRP Mod**
-- Fluid buckets do not come with textures, so you need to provide your own textures.
+- Fluid bucket textures are **generated automatically**: the vanilla iron bucket sprite is used as the base, and a slice of the `<id>_still` fluid texture is composited into the bucket opening. No hand-drawn bucket texture is needed; use `bucket_texture` if you want a wooden/custom bucket body.
+- The bucket item is **always registered** when the fluid has a block (`has_block`), because the "fill bucket" chain depends on it: without a bucket item, vanilla buckets and TechReborn fluid cells delete the fluid block but return nothing.
 
 ### Important Notes
 1. **Restart required**: Changes to configuration files take effect only after restarting the game
@@ -26,6 +27,7 @@ No coding required – just edit the config files to add custom content to the g
 5. **Fluid properties**: `viscosity` affects flow speed (higher = slower, 1000 ≈ water); `density` below 1000 makes the fluid flow upward (light fluid / gas effect); `temperature` is not yet functional; **fluid fields left unset automatically fall back to vanilla water logic** (viscosity 1000, density 1000 flowing downward, temperature 300K)
 6. **Resource priority**: Auto-generated resources can be overridden by traditional resource packs
 7. **Fluid block textures**: Fluid blocks require texture files named `<id>_still.png` and `<id>_flow.png`
+8. **Gas flow**: a fluid with density < 1000 is the mirror image of vanilla falling water – it stays full-height while there is the same fluid below it, forming a rising column; once blocked it spreads sideways, losing one level per block (up to 7). Once settled, gas blocks no longer recompute themselves, so they stop producing fluid ticks.
 
 ### Texture Requirements
 - **Format**: PNG files
@@ -114,10 +116,17 @@ Example:
 | `density` | Integer | No | 1000 | Density (<1000 flows upward, ≥1000 flows downward) |
 | `luminosity` | Integer | No | 0 | Light level (0–15) |
 | `temperature` | Integer | No | 300 | Temperature in Kelvin (not yet functional) |
-| `has_bucket_item` | Boolean | No | true | Whether to create a bucket item |
+| `has_bucket_item` | Boolean | No | true | **Deprecated**: bucket items and their models are now always generated (see below); kept for config compatibility |
 | `has_block` | Boolean | No | true | Whether to create a fluid block |
+| `bucket_texture` | String | No | `minecraft:item/bucket` | Base bucket texture used by the generated bucket model (16×16) |
 
-Fluid fields left unset automatically fall back to vanilla water logic: viscosity 1000 (flow interval of 5 ticks), density 1000 (flowing downward), luminosity 0, temperature 300K, and the bucket item and fluid block are created by default (`has_bucket_item`/`has_block` default to `true`).
+Fluid fields left unset automatically fall back to vanilla water logic: viscosity 1000 (flow interval of 5 ticks), density 1000 (flowing downward), luminosity 0, temperature 300K, and the fluid block is created by default (`has_block` defaults to `true`).
+
+> **About the bucket item**: whenever `has_block` is `true`, `jsonreg:<id>_bucket` is registered together with its model and lang entry.
+> Reason: `FluidBlock` relies on `fluid.getBucketItem()` when draining; if that returns air, vanilla buckets and TechReborn fluid cells
+> delete the fluid block and then receive an empty stack, i.e. "the fluid is consumed but no filled bucket is returned".
+> The bucket model is composited dynamically from **the vanilla iron bucket plus a slice of the fluid texture**, so no `<id>_bucket.png` is needed.
+> Conversely, a fluid with `has_block=false` gets no bucket – without a fluid block a bucket could neither fill nor place, it would just be wasted.
 
 Example:
 
@@ -160,8 +169,10 @@ The mod automatically generates the following:
 - Automatically creates the fluid blockstate file
 
 ### Fluid Bucket Models
-- Based on the `minecraft:item/generated` template
-- Automatically sets the texture path: `jsonreg:item/<id>_bucket`
+- Generated as a flat item model (no parent template needed)
+- Base layer: `bucket_texture`, default `minecraft:item/bucket`
+- Overlay: sampled from `jsonreg:block/<id>_still` using the **vanilla water bucket's fluid silhouette** (sprite rows 3–5: narrow 4–11 / wide 3–12 / narrow 5–10), so the liquid sits inside the bucket instead of covering the white rim
+- UV shares the geometry coordinates, so the fluid pattern (including animated textures) shows up inside the bucket; no `<id>_bucket.png` needed
 
 ### Required File Structure
 ```
@@ -170,8 +181,7 @@ The mod automatically generates the following:
         └── jsonreg/ 
             ├── textures/
             │ ├── item/
-            │ │ ├── test_item.png
-            │ │ └── test_fluid_bucket.png
+            │ │ └── test_item.png
             │ └── block/
             │     ├── test_block.png
             │     └── test_fluid_still.png
